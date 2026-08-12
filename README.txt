@@ -12,6 +12,6 @@ Contraseña inicial: PNP2026!
 PARA COMPARTIRLO ENTRE COMPUTADORAS:
 No copies el HTML a cada PC. Debes publicar esta carpeta en un servidor Node (por ejemplo Render, Railway, Fly.io o un VPS). El servidor debe conservar data.json entre reinicios.
 
-IMPORTANTE: cambia ADMIN_PASSWORD en las variables de entorno del servidor antes de usarlo públicamente.
+IMPORTANTE: en Render, configura SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY y ADMIN_PASSWORD. Si no configuras ADMIN_PASSWORD, la clave inicial es PNP2026!. Al reiniciar, el sistema sincroniza la contraseña del usuario admin con ADMIN_PASSWORD.
 
 El sistema guarda usuarios y resultados en el servidor. Cada usuario puede entrar desde su propia computadora con el mismo enlace.

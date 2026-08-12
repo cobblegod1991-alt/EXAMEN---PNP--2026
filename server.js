@@ -56,6 +56,16 @@ async function ensureAdmin() {
     });
     if (error) throw error;
     console.log('Administrador inicial creado.');
+  } else {
+    // Asegura que la contraseña definida en ADMIN_PASSWORD sea válida
+    // incluso si el usuario admin ya existía de una instalación anterior.
+    const { error } = await supabase.from('users').update({
+      password_hash: hashPassword(ADMIN_PASSWORD),
+      role: 'admin',
+      active: true
+    }).eq('username', 'admin');
+    if (error) throw error;
+    console.log('Administrador verificado/actualizado.');
   }
 }
 
