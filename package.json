@@ -1,8 +1,9 @@
 {
   "name": "examen-pnp-compartido",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "description": "Examen PNP con usuarios, contraseñas y resultados compartidos entre computadoras.",
   "scripts": {"start": "node server.js"},
-  "engines": {"node": ">=18"}
+  "engines": {"node": ">=18"},
+  "dependencies": {"@supabase/supabase-js": "^2.57.0"}
 }
