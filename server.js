@@ -38,7 +38,7 @@ function verifyPassword(password, stored) {
 async function getUser(username) {
   const { data, error } = await supabase
     .from('users')
-    .select('username,password_hash,role,active')
+    .select('username,display_name,password_hash,role,active')
     .eq('username', username)
     .maybeSingle();
   if (error) throw error;
@@ -50,7 +50,9 @@ async function ensureAdmin() {
   if (!existing) {
     const { error } = await supabase.from('users').insert({
       username: 'admin',
+      display_name: 'Administrador',
       password_hash: hashPassword(ADMIN_PASSWORD),
+      display_name: 'Administrador',
       role: 'admin',
       active: true
     });
@@ -61,6 +63,7 @@ async function ensureAdmin() {
     // incluso si el usuario admin ya existía de una instalación anterior.
     const { error } = await supabase.from('users').update({
       password_hash: hashPassword(ADMIN_PASSWORD),
+      display_name: 'Administrador',
       role: 'admin',
       active: true
     }).eq('username', 'admin');
@@ -126,7 +129,7 @@ async function addHistory(type, username, extra = {}) {
 async function safeUsers() {
   const { data, error } = await supabase
     .from('users')
-    .select('username,role,active,created_at')
+    .select('username,display_name,role,active,created_at')
     .order('created_at', { ascending: true });
   if (error) throw error;
   return data || [];
@@ -143,25 +146,54 @@ async function api(req, res, url) {
       const token = crypto.randomBytes(32).toString('hex');
       sessions.set(token, u.username);
       await addHistory('access', u.username, { evento: 'Ingreso' });
-      return send(res, 200, { token, username: u.username, role: u.role });
+      return send(res, 200, { token, username: u.username, display_name: u.display_name || u.username, role: u.role });
     }
 
     if (req.method === 'GET' && url === '/api/me') {
       const u = await auth(req);
       if (!u) return send(res, 401, { error: 'Sesión no válida.' });
-      return send(res, 200, { username: u.username, role: u.role });
+      return send(res, 200, { username: u.username, display_name: u.display_name || u.username, role: u.role });
     }
 
     if (req.method === 'GET' && url === '/api/users') {
       if (!await admin(req)) return send(res, 403, { error: 'Acceso de administrador requerido.' });
-      return send(res, 200, { users: await safeUsers() });
+      const users = await safeUsers();
+      const { data: results, error: resultError } = await supabase
+        .from('history')
+        .select('usuario,evento,score,pct,fecha,type')
+        .eq('type', 'result')
+        .order('fecha', { ascending: false })
+        .limit(5000);
+      if (resultError) throw resultError;
+      const grouped = {};
+      for (const r of (results || [])) {
+        if (!grouped[r.usuario]) grouped[r.usuario] = [];
+        if (grouped[r.usuario].length < 5) grouped[r.usuario].push(r);
+      }
+      for (const u of users) u.recent_exams = grouped[u.username] || [];
+      return send(res, 200, { users });
+    }
+
+    if (req.method === 'GET' && url === '/api/my-history') {
+      const u = await auth(req);
+      if (!u) return send(res, 401, { error: 'Sesión no válida.' });
+      const { data, error } = await supabase
+        .from('history')
+        .select('usuario,evento,score,pct,fecha,type')
+        .eq('usuario', u.username)
+        .eq('type', 'result')
+        .order('fecha', { ascending: false })
+        .limit(5);
+      if (error) throw error;
+      return send(res, 200, { exams: data || [] });
     }
 
     if (req.method === 'POST' && url === '/api/users') {
       if (!await admin(req)) return send(res, 403, { error: 'Acceso de administrador requerido.' });
-      const { username, password } = await parseBody(req);
+      const { username, password, display_name } = await parseBody(req);
       const u = String(username || '').trim();
-      if (!u || !password) return send(res, 400, { error: 'Complete usuario y contraseña.' });
+      const nombre = String(display_name || '').trim();
+      if (!u || !password || !nombre) return send(res, 400, { error: 'Complete nombre, usuario y contraseña.' });
       if (u.toLowerCase() === 'admin') return send(res, 409, { error: 'Ese usuario está reservado.' });
       if (String(password).length < 4) return send(res, 400, { error: 'La contraseña debe tener al menos 4 caracteres.' });
 
@@ -170,6 +202,7 @@ async function api(req, res, url) {
 
       const { error } = await supabase.from('users').insert({
         username: u,
+        display_name: nombre,
         password_hash: hashPassword(String(password)),
         role: 'usuario',
         active: true
@@ -210,6 +243,7 @@ async function api(req, res, url) {
       const body = await parseBody(req);
       const score = Math.max(0, Math.min(100, Number(body.score) || 0));
       await addHistory('result', u.username, {
+        evento: body.exam_name || 'EXAMEN PNP 2026',
         score,
         pct: score,
         correctas: Number(body.correctas) || score,

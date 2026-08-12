@@ -1,17 +1,31 @@
-EXAMEN PNP COMPARTIDO
+EXAMEN PNP COMPARTIDO - VERSION CON NOMBRES E HISTORIAL
 
-1) Requiere Node.js 18 o superior.
-2) Abre una terminal dentro de esta carpeta.
-3) Ejecuta: npm start
-4) Abre: http://localhost:3000
+CAMBIOS
+- Al crear un usuario se solicita: Nombre completo, Usuario y Contraseña.
+- El administrador ve el nombre de cada usuario y sus últimos 5 exámenes.
+- Cada examen muestra fecha, puntaje y estado.
+- La nota mínima para aprobar es 65 puntos.
+- Cada usuario, al iniciar sesión, ve su nombre y sus últimos 5 exámenes.
+- Se conserva el examen y el banco de preguntas.
 
-ADMINISTRADOR INICIAL
+IMPORTANTE: PRIMER PASO EN SUPABASE
+1) Abre Supabase > SQL Editor.
+2) Ejecuta el archivo supabase_migration_nombres_examenes.sql incluido en este ZIP.
+3) No borra usuarios ni resultados existentes.
+4) Luego despliega este proyecto en Render.
+
+RENDER
+Conserva las variables existentes:
+- SUPABASE_URL
+- SUPABASE_SERVICE_ROLE_KEY
+- ADMIN_PASSWORD
+
+El administrador se sincroniza con ADMIN_PASSWORD al iniciar el servidor.
+
+ADMINISTRADOR
 Usuario: admin
-Contraseña inicial: PNP2026!
+La contraseña es la que tengas actualmente en ADMIN_PASSWORD.
 
-PARA COMPARTIRLO ENTRE COMPUTADORAS:
-No copies el HTML a cada PC. Debes publicar esta carpeta en un servidor Node (por ejemplo Render, Railway, Fly.io o un VPS). El servidor debe conservar data.json entre reinicios.
-
-IMPORTANTE: en Render, configura SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY y ADMIN_PASSWORD. Si no configuras ADMIN_PASSWORD, la clave inicial es PNP2026!. Al reiniciar, el sistema sincroniza la contraseña del usuario admin con ADMIN_PASSWORD.
-
-El sistema guarda usuarios y resultados en el servidor. Cada usuario puede entrar desde su propia computadora con el mismo enlace.
+NOTA MINIMA
+65 puntos = APROBADO
+64 o menos = DESAPROBADO
