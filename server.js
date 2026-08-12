@@ -38,7 +38,7 @@ function verifyPassword(password, stored) {
 async function getUser(username) {
   const { data, error } = await supabase
     .from('users')
-    .select('username,nombre,password_hash,role,active,device_id,first_ip,device_bound_at')
+    .select('username,nombre,password_hash,role,active,device_id,first_ip,device_bound_at,max_devices')
     .eq('username', username)
     .maybeSingle();
   if (error) throw error;
@@ -128,10 +128,31 @@ async function addHistory(type, username, extra = {}) {
 async function safeUsers() {
   const { data, error } = await supabase
     .from('users')
-    .select('username,nombre,role,active,created_at,device_id,first_ip,device_bound_at')
+    .select('username,nombre,role,active,created_at,device_id,first_ip,device_bound_at,max_devices')
     .order('created_at', { ascending: true });
   if (error) throw error;
   return data || [];
+}
+
+async function getExtraDevices(username) {
+  const { data, error } = await supabase
+    .from('user_devices')
+    .select('device_id,ip,device_bound_at')
+    .eq('username', username)
+    .order('device_bound_at', { ascending: true });
+  if (error) {
+    if (String(error.message || '').toLowerCase().includes('user_devices')) return [];
+    throw error;
+  }
+  return data || [];
+}
+
+async function getAllDeviceIds(u) {
+  const ids = [];
+  if (u.device_id) ids.push(String(u.device_id));
+  const extras = await getExtraDevices(u.username);
+  for (const d of extras) if (d.device_id && !ids.includes(String(d.device_id))) ids.push(String(d.device_id));
+  return { ids, extras };
 }
 
 function getClientIp(req) {
@@ -154,17 +175,31 @@ async function api(req, res, url) {
         if (!clientDeviceId) {
           return send(res, 400, { error: 'No se pudo identificar este dispositivo. Recarga la página e inténtalo de nuevo.' });
         }
-        if (u.device_id && u.device_id !== clientDeviceId) {
-          return send(res, 403, { error: 'ACCESO DENEGADO: este usuario ya está vinculado a otro dispositivo. Comunícate con el administrador para cambiarlo.' });
-        }
-        if (!u.device_id) {
-          const { error: bindError } = await supabase.from('users').update({
-            device_id: clientDeviceId,
-            first_ip: clientIp || null,
-            device_bound_at: new Date().toISOString()
-          }).eq('username', u.username);
-          if (bindError) throw bindError;
-          u.device_id = clientDeviceId;
+        const maxDevices = Math.max(1, Number(u.max_devices || 1));
+        const { ids } = await getAllDeviceIds(u);
+        if (ids.includes(clientDeviceId)) {
+          // Dispositivo ya autorizado.
+        } else if (ids.length < maxDevices) {
+          const now = new Date().toISOString();
+          if (!u.device_id) {
+            const { error: bindError } = await supabase.from('users').update({
+              device_id: clientDeviceId,
+              first_ip: clientIp || null,
+              device_bound_at: now
+            }).eq('username', u.username);
+            if (bindError) throw bindError;
+            u.device_id = clientDeviceId;
+          } else {
+            const { error: extraError } = await supabase.from('user_devices').insert({
+              username: u.username,
+              device_id: clientDeviceId,
+              ip: clientIp || null,
+              device_bound_at: now
+            });
+            if (extraError) throw extraError;
+          }
+        } else {
+          return send(res, 403, { error: 'ACCESO DENEGADO: este usuario ya tiene '+maxDevices+' dispositivo'+(maxDevices===1?'':'s')+' vinculado'+(maxDevices===1?'':'s')+'. Comunícate con el administrador para autorizar otro.' });
         }
       }
       const token = crypto.randomBytes(32).toString('hex');
@@ -194,7 +229,15 @@ async function api(req, res, url) {
         if (!grouped[r.usuario]) grouped[r.usuario] = [];
         if (grouped[r.usuario].length < 5) grouped[r.usuario].push(r);
       }
-      for (const u of users) { u.display_name = u.nombre || u.username; u.recent_exams = grouped[u.username] || []; }
+      for (const u of users) {
+        u.display_name = u.nombre || u.username;
+        u.recent_exams = grouped[u.username] || [];
+        const { extras } = await getAllDeviceIds(u);
+        u.linked_devices = [];
+        if (u.device_id) u.linked_devices.push({ device_id: u.device_id, ip: u.first_ip, device_bound_at: u.device_bound_at });
+        for (const d of extras) if (d.device_id !== u.device_id) u.linked_devices.push(d);
+        u.max_devices = Math.max(1, Number(u.max_devices || 1));
+      }
       return send(res, 200, { users });
     }
 
@@ -229,7 +272,8 @@ async function api(req, res, url) {
         nombre: nombreCompleto,
         password_hash: hashPassword(String(password)),
         role: 'usuario',
-        active: true
+        active: true,
+      max_devices: 1
       });
       if (error) throw error;
       return send(res, 201, { ok: true });
@@ -241,6 +285,8 @@ async function api(req, res, url) {
       if (username === 'admin') return send(res, 400, { error: 'El administrador no necesita vinculación de dispositivo.' });
       const existing = await getUser(username);
       if (!existing) return send(res, 404, { error: 'Usuario no encontrado.' });
+      const { error: extraError } = await supabase.from('user_devices').delete().eq('username', username);
+      if (extraError && !String(extraError.message || '').toLowerCase().includes('user_devices')) throw extraError;
       const { error } = await supabase.from('users').update({
         device_id: null,
         first_ip: null,
@@ -248,6 +294,19 @@ async function api(req, res, url) {
       }).eq('username', username);
       if (error) throw error;
       return send(res, 200, { ok: true });
+    }
+
+    if (req.method === 'POST' && url.startsWith('/api/users/') && url.endsWith('/add-device-slot')) {
+      if (!await admin(req)) return send(res, 403, { error: 'Acceso de administrador requerido.' });
+      const username = decodeURIComponent(url.slice('/api/users/'.length, -'/add-device-slot'.length));
+      if (username === 'admin') return send(res, 400, { error: 'El administrador no necesita límite de dispositivos.' });
+      const existing = await getUser(username);
+      if (!existing) return send(res, 404, { error: 'Usuario no encontrado.' });
+      const current = Math.max(1, Number(existing.max_devices || 1));
+      if (current >= 10) return send(res, 400, { error: 'El máximo permitido es 10 dispositivos por usuario.' });
+      const { error } = await supabase.from('users').update({ max_devices: current + 1 }).eq('username', username);
+      if (error) throw error;
+      return send(res, 200, { ok: true, max_devices: current + 1 });
     }
 
     if (req.method === 'DELETE' && url.startsWith('/api/users/')) {
