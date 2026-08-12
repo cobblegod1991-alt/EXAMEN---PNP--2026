@@ -38,7 +38,7 @@ function verifyPassword(password, stored) {
 async function getUser(username) {
   const { data, error } = await supabase
     .from('users')
-    .select('username,nombre,password_hash,role,active')
+    .select('username,nombre,password_hash,role,active,device_id,first_ip,device_bound_at')
     .eq('username', username)
     .maybeSingle();
   if (error) throw error;
@@ -128,19 +128,44 @@ async function addHistory(type, username, extra = {}) {
 async function safeUsers() {
   const { data, error } = await supabase
     .from('users')
-    .select('username,nombre,role,active,created_at')
+    .select('username,nombre,role,active,created_at,device_id,first_ip,device_bound_at')
     .order('created_at', { ascending: true });
   if (error) throw error;
   return data || [];
 }
 
+function getClientIp(req) {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (forwarded) return String(forwarded).split(',')[0].trim();
+  return req.socket?.remoteAddress || '';
+}
+
 async function api(req, res, url) {
   try {
     if (req.method === 'POST' && url === '/api/login') {
-      const { username, password } = await parseBody(req);
+      const { username, password, device_id } = await parseBody(req);
       const u = await getUser(String(username || '').trim());
       if (!u || u.active === false || !verifyPassword(String(password || ''), u.password_hash)) {
         return send(res, 401, { error: 'Usuario o contraseña incorrectos.' });
+      }
+      const clientDeviceId = String(device_id || '').trim();
+      const clientIp = getClientIp(req);
+      if (u.role !== 'admin') {
+        if (!clientDeviceId) {
+          return send(res, 400, { error: 'No se pudo identificar este dispositivo. Recarga la página e inténtalo de nuevo.' });
+        }
+        if (u.device_id && u.device_id !== clientDeviceId) {
+          return send(res, 403, { error: 'ACCESO DENEGADO: este usuario ya está vinculado a otro dispositivo. Comunícate con el administrador para cambiarlo.' });
+        }
+        if (!u.device_id) {
+          const { error: bindError } = await supabase.from('users').update({
+            device_id: clientDeviceId,
+            first_ip: clientIp || null,
+            device_bound_at: new Date().toISOString()
+          }).eq('username', u.username);
+          if (bindError) throw bindError;
+          u.device_id = clientDeviceId;
+        }
       }
       const token = crypto.randomBytes(32).toString('hex');
       sessions.set(token, u.username);
@@ -208,6 +233,21 @@ async function api(req, res, url) {
       });
       if (error) throw error;
       return send(res, 201, { ok: true });
+    }
+
+    if (req.method === 'POST' && url.startsWith('/api/users/') && url.endsWith('/unbind-device')) {
+      if (!await admin(req)) return send(res, 403, { error: 'Acceso de administrador requerido.' });
+      const username = decodeURIComponent(url.slice('/api/users/'.length, -'/unbind-device'.length));
+      if (username === 'admin') return send(res, 400, { error: 'El administrador no necesita vinculación de dispositivo.' });
+      const existing = await getUser(username);
+      if (!existing) return send(res, 404, { error: 'Usuario no encontrado.' });
+      const { error } = await supabase.from('users').update({
+        device_id: null,
+        first_ip: null,
+        device_bound_at: null
+      }).eq('username', username);
+      if (error) throw error;
+      return send(res, 200, { ok: true });
     }
 
     if (req.method === 'DELETE' && url.startsWith('/api/users/')) {
