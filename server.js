@@ -342,9 +342,10 @@ async function api(req, res, url) {
       const correctas = Math.max(0, Number(body.correctas) || 0);
       const incorrectas = Math.max(0, Number(body.incorrectas) || 0);
       const pct = Math.max(0, Math.min(100, Number(body.pct) || 0));
-      const total = Math.max(1, correctas + incorrectas + Math.max(0, Number(body.blanco) || 0));
+      const total = Math.max(1, Number(body.total) || (correctas + incorrectas + Math.max(0, Number(body.blanco) || 0)));
+      const examName = String(body.exam_name || (total === 20 ? 'MINI EXAMEN PNP 2026 · 20 PREGUNTAS' : 'EXAMEN PNP 2026 · 100 PREGUNTAS'));
       await addHistory('result', u.username, {
-        evento: body.exam_name || 'EXAMEN PNP 2026',
+        evento: examName,
         score: correctas,
         pct,
         correctas,
