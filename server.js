@@ -339,13 +339,16 @@ async function api(req, res, url) {
       const u = await auth(req);
       if (!u) return send(res, 401, { error: 'Sesión no válida.' });
       const body = await parseBody(req);
-      const score = Math.max(0, Math.min(100, Number(body.score) || 0));
+      const correctas = Math.max(0, Number(body.correctas) || 0);
+      const incorrectas = Math.max(0, Number(body.incorrectas) || 0);
+      const pct = Math.max(0, Math.min(100, Number(body.pct) || 0));
+      const total = Math.max(1, correctas + incorrectas + Math.max(0, Number(body.blanco) || 0));
       await addHistory('result', u.username, {
         evento: body.exam_name || 'EXAMEN PNP 2026',
-        score,
-        pct: score,
-        correctas: Number(body.correctas) || score,
-        incorrectas: Number(body.incorrectas) || (100 - score)
+        score: correctas,
+        pct,
+        correctas,
+        incorrectas
       });
       return send(res, 200, { ok: true });
     }
