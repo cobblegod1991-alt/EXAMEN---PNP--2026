@@ -335,6 +335,49 @@ async function api(req, res, url) {
       return send(res, 200, { ok: true });
     }
 
+    if (req.method === 'GET' && url === '/api/mistakes') {
+      const u = await auth(req);
+      if (!u) return send(res, 401, { error: 'Sesión no válida.' });
+      const { data, error } = await supabase
+        .from('user_mistakes')
+        .select('id,pregunta_id,numero_pregunta,materia,veces_fallada,primera_falla,ultima_falla')
+        .eq('usuario', u.username)
+        .eq('resuelta', false)
+        .order('ultima_falla', { ascending: false });
+      if (error) throw error;
+      return send(res, 200, { mistakes: data || [] });
+    }
+
+    if (req.method === 'POST' && url === '/api/mistakes') {
+      const u = await auth(req);
+      if (!u) return send(res, 401, { error: 'Sesión no válida.' });
+      const body = await parseBody(req);
+      const preguntaId = String(body.pregunta_id ?? '').trim();
+      if (!preguntaId) return send(res, 400, { error: 'Falta el identificador de la pregunta.' });
+      const { error } = await supabase.rpc('registrar_pregunta_fallada', {
+        p_usuario: u.username,
+        p_pregunta_id: preguntaId,
+        p_numero_pregunta: body.numero_pregunta == null ? null : Number(body.numero_pregunta),
+        p_materia: body.materia == null ? null : String(body.materia)
+      });
+      if (error) throw error;
+      return send(res, 200, { ok: true });
+    }
+
+    if (req.method === 'POST' && url === '/api/mistakes/resolve') {
+      const u = await auth(req);
+      if (!u) return send(res, 401, { error: 'Sesión no válida.' });
+      const body = await parseBody(req);
+      const preguntaId = String(body.pregunta_id ?? '').trim();
+      if (!preguntaId) return send(res, 400, { error: 'Falta el identificador de la pregunta.' });
+      const { error } = await supabase.rpc('resolver_pregunta_fallada', {
+        p_usuario: u.username,
+        p_pregunta_id: preguntaId
+      });
+      if (error) throw error;
+      return send(res, 200, { ok: true });
+    }
+
     if (req.method === 'POST' && url === '/api/result') {
       const u = await auth(req);
       if (!u) return send(res, 401, { error: 'Sesión no válida.' });
