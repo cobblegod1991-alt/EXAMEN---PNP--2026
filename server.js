@@ -335,6 +335,19 @@ async function api(req, res, url) {
       return send(res, 200, { ok: true });
     }
 
+
+    if (req.method === 'GET' && url === '/api/subject-stats') {
+      const u = await auth(req);
+      if (!u) return send(res, 401, { error: 'Sesión no válida.' });
+      const { data, error } = await supabase.from('user_subject_stats').select('materia,correctas,incorrectas').eq('usuario', u.username).order('materia');
+      if (error) throw error;
+      const stats = (data || []).map(x => {
+        const c = Number(x.correctas || 0), i = Number(x.incorrectas || 0), attempts = c + i;
+        return { materia: x.materia, correctas: c, incorrectas: i, attempts, pct: attempts ? Math.round(c / attempts * 100) : 0 };
+      });
+      return send(res, 200, { stats });
+    }
+
     if (req.method === 'GET' && url === '/api/mistakes') {
       const u = await auth(req);
       if (!u) return send(res, 401, { error: 'Sesión no válida.' });
@@ -394,6 +407,22 @@ async function api(req, res, url) {
         correctas,
         incorrectas
       });
+      const subjectStats = Array.isArray(body.subject_stats) ? body.subject_stats : [];
+      for (const st of subjectStats) {
+        const materia = String(st.materia || '').trim();
+        const c = Math.max(0, Number(st.correctas) || 0);
+        const i = Math.max(0, Number(st.incorrectas) || 0);
+        if (!materia || (c + i) <= 0) continue;
+        const { data: old, error: oldErr } = await supabase.from('user_subject_stats').select('id,correctas,incorrectas').eq('usuario', u.username).eq('materia', materia).maybeSingle();
+        if (oldErr) throw oldErr;
+        if (old) {
+          const { error: updErr } = await supabase.from('user_subject_stats').update({ correctas: Number(old.correctas || 0) + c, incorrectas: Number(old.incorrectas || 0) + i, updated_at: new Date().toISOString() }).eq('id', old.id);
+          if (updErr) throw updErr;
+        } else {
+          const { error: insErr } = await supabase.from('user_subject_stats').insert({ usuario: u.username, materia, correctas: c, incorrectas: i });
+          if (insErr) throw insErr;
+        }
+      }
       return send(res, 200, { ok: true });
     }
 
