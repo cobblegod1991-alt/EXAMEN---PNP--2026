@@ -1,0 +1,6 @@
+Banco corregido conforme al balotario PNP 2026 proporcionado.
+21 claves de respuesta corregidas (numeracion original): 15, 112, 137, 168, 385, 461, 479, 499, 509, 586, 620, 622, 629, 663, 705, 713, 825, 846, 896, 1104, 1127
+Añadida pregunta oficial numero 718 (codigo 181932).
+Total actual: 1500 preguntas.
+Se actualizaron index.html y test.js.
+NOTA: Este paquete no altera datos de usuarios ni resultados en Supabase. Revise funcionalidad y respaldos antes de desplegar.
