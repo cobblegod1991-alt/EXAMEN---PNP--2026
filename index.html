@@ -361,7 +361,7 @@
 
 <div id="start-screen" class="container" style="display:none">
   <h2>Simulacro de Examen</h2>
-  <p>Se seleccionar&aacute;n 100 preguntas al azar del banco oficial de <strong style="color:#c8a135">1,499 preguntas</strong> distribuidas en 20 materias.</p>
+  <p>Se seleccionar&aacute;n 100 preguntas aleatorias del banco de <strong style="color:#c8a135">1,500 preguntas</strong>, respetando las cuotas de 22 temas (50 comunes y 50 de especialidad).</p>
   <div class="info-grid">
     <div class="info-card"><span class="num">1,499</span><span class="lbl">Preguntas en el banco</span></div>
     <div class="info-card"><span class="num">100</span><span class="lbl">Preguntas por examen</span></div>
@@ -371,7 +371,7 @@
     <div class="subject-selection-head">
       <div>
         <h3>Selecciona las materias del examen</h3>
-        <p>Marca una, varias o todas. Las 100 preguntas se elegir&aacute;n solamente de las materias seleccionadas.</p>
+        <p>El simulacro de 100 preguntas incluye todas las materias y respeta una cuota fija por tema.</p>
       </div>
       <label class="select-all-label"><input type="checkbox" id="select-all-subjects" checked onchange="toggleAllSubjects(this.checked)"> <span>Marcar todas</span></label>
     </div>
@@ -780,8 +780,10 @@ function selectExamMode(size) {
   if (desc) desc.innerHTML = 'Selecciona las materias de las que quieres que salgan las preguntas.';
   if (info[1]) info[1].textContent = size.toLocaleString('es-PE');
   if (info[2]) info[2].textContent = size.toLocaleString('es-PE');
-  if (subjectText) subjectText.innerHTML = 'Marca una, varias o todas. Las <strong>' + size + ' preguntas</strong> se elegirán solamente de las materias seleccionadas.';
-  if (hint) hint.innerHTML = 'Cada examen es único — las ' + size + ' preguntas se eligen al azar dentro de las materias que selecciones.';
+  if (subjectText) subjectText.innerHTML = size === 100
+    ? 'Simulacro oficial: 50 preguntas comunes y 50 de especialidad, con cuotas fijas por tema y selección aleatoria. Se incluyen todas las materias.'
+    : 'Marca una, varias o todas. Las <strong>' + size + ' preguntas</strong> se elegirán solamente de las materias seleccionadas.';
+  if (hint) hint.innerHTML = size === 100 ? 'Cada simulacro tiene la misma cantidad por tema, pero preguntas distintas elegidas al azar.' : 'Cada examen es único — las ' + size + ' preguntas se eligen al azar dentro de las materias que selecciones.';
   if (btn) btn.textContent = size === 20 ? 'Iniciar Mini Examen' : 'Iniciar Simulacro';
   updateSubjectSelection();
 }
@@ -866,6 +868,7 @@ function renderSubjectSelection() {
 }
 
 function onSubjectChange() {
+  if (examLength === 100) document.querySelectorAll('.subject-box').forEach(b => { b.checked = true; });
   const boxes = Array.from(document.querySelectorAll('.subject-box'));
   selectedSubjects = new Set(boxes.filter(b => b.checked).map(b => b.dataset.subject));
   const all = boxes.length > 0 && boxes.every(b => b.checked);
@@ -875,6 +878,7 @@ function onSubjectChange() {
 }
 
 function toggleAllSubjects(checked) {
+  if (examLength === 100) checked = true;
   document.querySelectorAll('.subject-box').forEach(b => { b.checked = checked; });
   const master = document.getElementById('select-all-subjects');
   if (master) master.indeterminate = false;
@@ -886,10 +890,12 @@ function updateSubjectSelection() {
   const count = document.getElementById('subject-count');
   const error = document.getElementById('subject-error');
   const btn = document.getElementById('start-exam-btn');
-  const ok = available >= examLength;
-  if (count) count.innerHTML = 'Materias seleccionadas: <strong>' + selectedSubjects.size + '</strong> &middot; Preguntas disponibles: <strong>' + available + '</strong> &middot; Se generar&aacute;n <strong>' + EXAM_QUESTION_COUNT + '</strong> preguntas';
+  const ok = examLength === 100 ? true : available >= examLength;
+  if (count && examLength === 100) count.innerHTML = 'Simulacro con cuotas oficiales: <strong>50 comunes + 50 especialidad = 100 preguntas</strong>' ;
+  else if (count) count.innerHTML = 'Materias seleccionadas: <strong>' + selectedSubjects.size + '</strong> &middot; Preguntas disponibles: <strong>' + available + '</strong> &middot; Se generar&aacute;n <strong>' + EXAM_QUESTION_COUNT + '</strong> preguntas';
   if (error) {
-    if (!selectedSubjects.size) { error.textContent = 'Selecciona al menos una materia para continuar.'; error.style.display = 'block'; }
+    if (examLength === 100) { error.style.display = 'none'; }
+    else if (!selectedSubjects.size) { error.textContent = 'Selecciona al menos una materia para continuar.'; error.style.display = 'block'; }
     else if (!ok) { error.textContent = 'Las materias seleccionadas tienen solo ' + available + ' preguntas. Para generar un examen de ' + examLength + ' preguntas debes seleccionar m&aacute;s materias.'; error.style.display = 'block'; }
     else error.style.display = 'none';
   }
@@ -906,13 +912,77 @@ function backToExamSelection() {
   document.getElementById('mode-screen').style.display = 'block';
 }
 
+// Distribucion de 100 preguntas conforme al cuadro proporcionado.
+// Los apartados D.L. 1611 y D.L. 1428 se distinguen por rangos
+// consecutivos del balotario, que en esta version aparecen agrupados.
+const EXAM_100_QUOTAS = [
+  ['CONSTITUCIÓN POLÍTICA DEL PERÚ',7],
+  ['DECLARACIÓN UNIVERSAL DE LOS DERECHOS HUMANOS',1],
+  ['LEY DE LA PNP (D.L. N° 1267)',6],
+  ['LEY DE CARRERA Y SITUACIÓN DEL PERSONAL PNP (D.L. N°1149)',7],
+  ['LEY DE LUCHA CONTRA LA CORRUPCIÓN (D.L. N°1291)',3],
+  ['LEY DE RÉGIMEN DISCIPLINARIO PNP (LEY N° 30714)',8],
+  ['LEY DE FORMACIÓN PROFESIONAL PNP (D.L. N° 1318)',3],
+  ['LEY DE TRANSPARENCIA Y ACCESO A LA INFORMACIÓN (TUO L. 27806)',4],
+  ['LEY DE PROCESOS DE ASCENSOS PNP (LEY 31873)',3],
+  ['LEY DEL PROCEDIMIENTO ADMINISTRATIVO GENERAL (LEY 27444)',8],
+  ['CÓDIGO PROCESAL PENAL (D.L. N° 957)',11],
+  ['CÓDIGO PENAL (D.L. N° 635)',11],
+  ['USO DE LA FUERZA POR PARTE DE LA PNP (D.L. N° 1186)',3],
+  ['LUCHA CONTRA EL TRÁFICO ILÍCITO DE DROGAS (D.L. N° 1241)',3],
+  ['LUCHA CONTRA EL LAVADO DE ACTIVOS (D.L. N° 1106)',3],
+  ['LEY CONTRA LA VIOLENCIA HACIA LA MUJER (LEY N° 30364)',3],
+  ['LEY CONTRA EL CRIMEN ORGANIZADO (LEY N° 30077)',2],
+  ['PROTOCOLOS DE ACTUACIÓN INTERINSTITUCIONAL (D.S. N° 009-2018-JUS)',2],
+  ['LEY 32130 - INVESTIGACIÓN PENAL',3],
+  ['D.L. 1611 - EXTORSIÓN',2],
+  ['MANUAL DDHH - FUNCIÓN POLICIAL',5],
+  ['D.L. 1428 - DESAPARICIÓN DE PERSONAS',2]
+];
+
+function quotaSubject(q) {
+  const n = Number(q.originalNumber);
+  if (q.s === 'LEY QUE FORTALECE LA INVESTIGACIÓN PENAL (LEY 32130)') {
+    return n >= 1376 && n <= 1381 ? 'D.L. 1611 - EXTORSIÓN' : 'LEY 32130 - INVESTIGACIÓN PENAL';
+  }
+  if (q.s === 'DDHH APLICADOS A LA FUNCIÓN POLICIAL (R.M. N° 487-2018-IN)') {
+    return n >= 1476 && n <= 1500 ? 'D.L. 1428 - DESAPARICIÓN DE PERSONAS' : 'MANUAL DDHH - FUNCIÓN POLICIAL';
+  }
+  return q.s;
+}
+
+function createQuotaExam() {
+  if (EXAM_100_QUOTAS.reduce((total, [,count]) => total + count, 0) !== 100) {
+    throw new Error('Las cuotas del examen no suman 100.');
+  }
+  const chosen = [];
+  for (const [subject, quantity] of EXAM_100_QUOTAS) {
+    const pool = ALL_QUESTIONS.filter(q => quotaSubject(q) === subject);
+    if (pool.length < quantity) {
+      throw new Error(`Faltan preguntas de ${subject}: existen ${pool.length}, se necesitan ${quantity}.`);
+    }
+    chosen.push(...shuffle(pool).slice(0, quantity));
+  }
+  if (chosen.length !== 100 || new Set(chosen.map(q=>q.originalNumber)).size !== 100) {
+    throw new Error('Error al seleccionar las 100 preguntas sin repeticiones.');
+  }
+  return shuffle(chosen);
+}
+
 function startExam() {
   const availableQuestions = ALL_QUESTIONS.filter(q => selectedSubjects.has(q.s));
-  if (availableQuestions.length < examLength) {
+  if (examLength !== 100 && availableQuestions.length < examLength) {
     updateSubjectSelection();
     return;
   }
-  exam = shuffle(availableQuestions).slice(0, examLength);
+  if (examLength === 100) {
+    // La modalidad de 100 respeta el cuadro completo de cuotas,
+    // independientemente de las casillas de estudio por materia.
+    try { exam = createQuotaExam(); }
+    catch (error) { alert(error.message); return; }
+  } else {
+    exam = shuffle(availableQuestions).slice(0, examLength);
+  }
   answered = new Array(examLength).fill(null);
   current = 0;
   score = 0;
