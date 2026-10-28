@@ -166,6 +166,16 @@
   .review-label{display:block;font-size:11px;font-weight:800;letter-spacing:.04em;margin-bottom:4px;text-transform:uppercase}
   .review-label.red{color:#ff7b88}.review-label.green{color:#4ade80}
 
+
+/* Indicador ordinal de la materia, solo en el simulacro de 100. */
+.section-badge .subject-counter {
+  display: inline-block;
+  margin-left: 8px;
+  color: #fbbf24;
+  font-weight: 800;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
 </style>
 
 <style id="auth-styles">
@@ -1000,6 +1010,20 @@ renderSubjectSelection();
 // La materia débil se carga después del inicio de sesión (función enter()).
 
 
+// Contador fijo por materia en el simulacro de 100 preguntas.
+// Se calcula desde el orden ya sorteado y no depende de respuestas ni navegacion.
+function getSubjectPosition(index) {
+  if (examLength !== 100 || exam.length !== 100) return '';
+  const subject = quotaSubject(exam[index]);
+  const quotaEntry = EXAM_100_QUOTAS.find(([name]) => name === subject);
+  if (!quotaEntry) return '';
+  let position = 0;
+  for (let i = 0; i <= index; i++) {
+    if (quotaSubject(exam[i]) === subject) position++;
+  }
+  return position + '/' + quotaEntry[1];
+}
+
 function renderQuestion() {
   const q = exam[current];
   const ans = answered[current];
@@ -1034,7 +1058,7 @@ function renderQuestion() {
 
   document.getElementById('question-container').innerHTML =
     '<div class="question-card">' +
-    '<div class="section-badge"><span class="bi">&#128218;</span> ' + escHtml(q.s) + '</div>' +
+    '<div class="section-badge"><span class="bi">&#128218;</span> ' + escHtml(q.s) + (getSubjectPosition(current) ? ' <span class="subject-counter">' + getSubjectPosition(current) + '</span>' : '') + '</div>' +
     '<div class="question-num">Pregunta N.º ' + q.originalNumber + ' del balotario &middot; ' + (current + 1) + ' de ' + exam.length + '</div>' +
     '<div class="question-text">' + escHtml(q.q) + '</div>' +
     '<div class="options">' + optionsHtml + '</div>' +
